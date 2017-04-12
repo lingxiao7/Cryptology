@@ -101,13 +101,14 @@ public:
 	*/
 	void generator() {
 		// 输出初始储存器值
-		printf("Before LSFR(Const c: ");
+		printf("| Before LSFR(Const c: ");
 		for (int i = 0; i < 16; i++)
 			printf("%d", c[i]);
-		puts(")generator...");
+		printf(")...    |\n| ");
+
 		for (int i = 0; i < 16; i++)
 			printf("%d", a[i]);
-		puts("");
+		puts("                             |");
 
 		int cur = n - 1, endpos = 2 << n - 1;
 		for (int i = 0; i < endpos; i++) {
@@ -131,12 +132,15 @@ private:
 	unsigned char *key;				// 密钥MAX_KEY_LEN
 									//unsigned char key[MAX_KEY_LEN];	
 	unsigned int keyLen;			// 密钥长度
-	unsigned char *keyStream;		// 密钥流65535
+	unsigned int keySLen;			// 密钥流长度
+	unsigned char *s;				// 密钥流65535
+	unsigned char *keyStream;		// 密钥流8192
 
 public:
 	Geffe() {
 		key = (unsigned char *)malloc(sizeof(unsigned char) * MAX_KEY_LEN);
-		keyStream = (unsigned char *)malloc(sizeof(unsigned char) * 65535);
+		s = (unsigned char *)malloc(sizeof(unsigned char) * 65535);
+		keyStream = (unsigned char *)malloc(sizeof(unsigned char) * 8192);
 	}
 	/*
 	* Geffe初始化
@@ -151,6 +155,8 @@ public:
 	*/
 	void init(unsigned char K[], unsigned int kLen, bool c[3][16]) {
 		keyLen = kLen;
+		keySLen = 0;
+		keyStream[keySLen] = 0;
 		for (int i = 0; i < keyLen; i++) key[i] = K[i];		// 初始密钥
 		for (int i = 0; i < 3; i++) m_sLFSR[i].init(c[i], key, keyLen);	// 初始LFSR[i]
 	}
@@ -160,6 +166,7 @@ public:
 	* @return
 	*/
 	void generator() {
+		puts("----------------------Init----------------------");
 		/* 调用LFSR生成器 */
 		for (int i = 0; i < 3; i++)
 			m_sLFSR[i].generator();
@@ -169,31 +176,76 @@ public:
 		unsigned int *s1 = m_sLFSR[0].getSeq();
 		unsigned int *s2 = m_sLFSR[2].getSeq();
 
-		/* 输出LFSR序列前100位 */
-		puts("LFSR1: ");
-		for (int i = 0; i < 100; i++)
+		puts("------------------LFSR Sequence-----------------");
+		/* 输出LFSR序列前80位 */
+		printf("| LFSR1(first 80 bit):                         |\n| ");
+		for (int i = 0; i < 80; i++) {
 			printf("%d", s1[i]);
-		puts("");
-
-		puts("LFSR2: ");
-		for (int i = 0; i < 100; i++)
-			printf("%d", ctl[i]);
-		puts("");
-
-		puts("LFSR3: ");
-		for (int i = 0; i < 100; i++)
-			printf("%d", s1[i]);
-		puts("");
-
-		/* Geffe生成器产生密钥流 */
-		for (int i = 0; i < 65535; i++) {
-			if (ctl[i] == 1) {
-				keyStream[i] = ctl[i] ^ s1[i];
-			}
-			else {
-				keyStream[i] = ctl[i] ^ s2[i];
+			if ((i % 8) == 7) {
+				if (i == 39)
+					printf(" |\n| ");
+				else
+					printf(" ");
 			}
 		}
+		puts("|");
+
+		printf("| LFSR2(first 80 bit):                         |\n| ");
+		for (int i = 0; i < 80; i++) {
+			printf("%d", ctl[i]);
+			if ((i % 8) == 7) {
+				if (i == 39)
+					printf(" |\n| ");
+				else
+					printf(" ");
+			}
+		}
+		puts("|");
+
+		printf("| LFSR3(first 80 bit):                         |\n| ");
+		for (int i = 0; i < 80; i++) {
+			printf("%d", s1[i]);
+			if ((i % 8) == 7) {
+				if (i == 39)
+					printf(" |\n| ");
+				else
+					printf(" ");
+			}
+		}
+		puts("|");
+
+		puts("-----------------Geffe Sequence-----------------");
+		printf("| Geffe keyStream(first 10 number)             |\n| ");
+		/* Geffe生成器产生密钥流 */
+		for (int i = 0, kmod = 0; i < 65535; i++, kmod++) {
+			if (kmod == 8) {
+				if (keySLen < 10) printf("%3d ", keyStream[keySLen]);
+				keyStream[++keySLen] = 0;
+				kmod = 0;
+			}
+
+			if (ctl[i] == 1) {
+				s[i] = ctl[i] ^ s1[i];
+			}
+			else {
+				s[i] = ctl[i] ^ s2[i];
+			}
+			keyStream[keySLen] += s[i] << (7 - kmod);
+		}
+		printf("     |\n");
+		printf("| Geffe keyStream in Sequence(first 80 bit)    |\n| ");
+		for (int i = 0; i < 80; i++) {
+			printf("%d", s[i]);
+			if (i % 8 == 7) {
+				if (i == 39)
+					printf(" |\n| ");
+				else
+					printf(" ");
+			}
+		}
+		puts("|");
+		//for (int i = 0; i < keySLen; i++)
+		//	printf("%d", keyStream[i]);
 	}
 
 	/*
@@ -209,7 +261,7 @@ public:
 		int i;
 		// c = (m + k) ^ keyStream
 		for (i = 0; message[i]; i++)
-			cipherText[i] = (message[i] + key[i % keyLen]) ^ keyStream[i % 65535];
+			cipherText[i] = (message[i]) ^ keyStream[i % keySLen];
 		cipherText[i] = 0;	// 字符串终止符
 	}
 
@@ -226,7 +278,7 @@ public:
 		int i;
 		// m = c ^ keyStream - k
 		for (i = 0; cipherText[i]; i++)
-			message[i] = (cipherText[i] ^ keyStream[i % 65535]) - key[i % keyLen];	// 异或
+			message[i] = (cipherText[i] ^ keyStream[i % keySLen]);	// 异或
 		message[i] = 0;	// 字符串终止符
 	}
 
@@ -241,12 +293,12 @@ int main(int argc, char const *argv[])
 	int opt = 0;
 	char ch;
 	/* 简易菜单 */
-	puts("----------------------------------------------");
-	puts("|                    MENU                    |");
-	puts("|--------------------------------------------|");
-	puts("|           1. 从控制台读取明文              |");
-	puts("|           2. 从文件中读取明文              |");
-	puts("----------------------------------------------");
+	puts("---------------StreamCipher Demo----------------");
+	puts("|                     MENU                     |");
+	puts("|----------------------------------------------|");
+	puts("|            1. 从控制台读取明文               |");
+	puts("|            2. 从文件中读取明文               |");
+	puts("------------------------------------------------");
 	/* 选择菜单项 */
 	while (true) {
 		scanf("%c", &ch);
@@ -258,21 +310,20 @@ int main(int argc, char const *argv[])
 	}
 	char filename[256];						// 文件名
 
-	/* 从控制台读取明文 */
+											/* 从控制台读取明文 */
 	if (opt == 1) {
 		mCnt = 0;
-		puts("请输入明文: ");
+		printf("请输入明文: ");
 		while (!isalnum(ch = getchar()));
 		message[mCnt++] = ch;
 		while ((ch = getchar()) != '\n')
 			message[mCnt++] = ch;
 		message[mCnt] = 0;
-		printf("%s\n", message);
 	}
 	/* 从文件中读取明文 */
 	else {
 		FILE * fp;								// 文件指针
-		puts("请输入文件名: ");
+		printf("请输入文件名: ");
 		scanf("%s", filename);
 
 		if ((fp = fopen(filename, "r")) == NULL) {	// 只读打开
@@ -290,7 +341,7 @@ int main(int argc, char const *argv[])
 	}
 
 	/* Input a key */
-	printf("Password: \n");
+	printf("Password: ");
 	int kCnt = 0;
 	while (!isalnum(ch = getchar()));
 	while ((ch = getchar()) != '\n')
@@ -315,7 +366,7 @@ int main(int argc, char const *argv[])
 	geffe.generator();
 
 	/* Cipher Text Generate*/
-	printf("Encrypting...\n");
+	puts("-------------------Encrypting-------------------");
 	geffe.encrypt(message, cipherText);
 
 	/* Save cipher text*/
@@ -329,15 +380,16 @@ int main(int argc, char const *argv[])
 	}
 	/* Or print cipher */
 	else {
-		printf("%s\n", cipherText);
+		printf("| %s\n", cipherText);
 	}
 
 	/* Decrpty */
-	printf("Decrypting...\n");
+	puts("-------------------Decrypting-------------------");
 	unsigned char msg[MAX_CHAR_LEN];
 	/* Print message */
 	geffe.decrypt(cipherText, msg);
-	printf("%s\n", msg);
+	printf("| %s\n", msg);
 
+	puts("|---------------------End----------------------|");
 	return 0;
 }
